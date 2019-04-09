@@ -1,0 +1,245 @@
+package parser;
+
+import java.util.*;
+import java.util.regex.Pattern;
+import java.util.regex.Matcher;
+import java.io.*;
+import java_cup.runtime.*;
+
+action code
+	{:
+		
+	:};
+	
+parser code
+	{:
+		private LambdaLexer lexer;
+		private File file;
+		public String finalResult = "";
+		private boolean shouldPrint = false;
+		private int betaReductionCount = 0;
+		
+		public parser( File file ) {
+			this();
+			this.file = file;
+			try {
+				lexer = new LambdaLexer( new FileReader( file ) );
+			}
+			catch ( IOException exception ) {
+				throw new Error( "Unable to open file \"" + file + "\"" );
+			}
+		}
+		
+		public parser( String function ) {
+			this();
+			lexer = new LambdaLexer( new StringReader( function ) );
+		}
+		
+		private void print(String x){
+			if(shouldPrint)
+				System.out.print(x);
+		}
+		
+		private void println(String x){
+			if(shouldPrint)
+				System.out.println(x);
+		}
+		
+		public void setShouldPrint(boolean b){
+			this.shouldPrint = b;
+		}
+		
+		public int getBetaReductionCount(){
+			return betaReductionCount;
+		}
+		
+		private boolean checkIfNum(String s){
+			try {
+				Integer.parseInt(s);
+			} catch (NumberFormatException | NullPointerException e) {
+				return false;
+			}
+			return true;
+		}
+		
+		private boolean checkIfNum(String s1, String s2){
+			return ( checkIfNum(s1) && checkIfNum(s2) );
+		}
+		
+		public static String insertString(String originalString, String stringToBeInserted, int index)
+		{
+
+			// Create a new string
+			String newString = originalString.substring(0, index + 1)
+					+ stringToBeInserted
+					+ originalString.substring(index + 1);
+
+			// return the modified String
+			return newString;
+		}
+		
+		public static void createFile(String s){
+        try {
+            PrintWriter writer = new PrintWriter("temp.temp", "UTF-8");
+            writer.print(s);
+            writer.close();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+	
+	:};
+	
+scan with
+	{:
+		return lexer.next_token();
+	:};
+terminal PLUS, MINUS, MULTIPLY, DIVIDE, LEFT, RIGHT, DOT, LAMBDA;
+terminal String CONSTANT;
+terminal String VARIABLE;
+
+nonterminal String EXPRESSION, EXPRESSION_LIST, APPLICATION;
+
+precedence left VARIABLE;
+precedence left CONSTANT;
+precedence left PLUS, MINUS;
+precedence left MULTIPLY, DIVIDE;
+precedence left LEFT, RIGHT;
+
+start with EXPRESSION_LIST;
+
+EXPRESSION_LIST ::=
+		EXPRESSION_LIST:e1 EXPRESSION:e2
+		{:
+		RESULT = e1 + e2;
+		finalResult = e1 + e2;
+		:}
+	|
+		EXPRESSION:e1
+		{:
+		RESULT = e1;
+		finalResult = e1;
+		:}
+	|
+		
+	;
+
+EXPRESSION ::= 
+		APPLICATION:e1
+		{:
+		RESULT = e1;
+		println(e1);
+		:}
+	| 
+		VARIABLE:var 
+		{:
+		RESULT = var;
+		:}
+	| 
+		LEFT EXPRESSION_LIST:e1 RIGHT 
+		{:
+		RESULT = e1;
+		:}
+	| 
+		CONSTANT:con 
+		{:
+		RESULT = con;
+		:}
+	| 
+		PLUS EXPRESSION:e1 EXPRESSION:e2 
+		{:
+		 if( checkIfNum(e1, e2) ){
+			RESULT = String.valueOf( (Integer) Integer.parseInt(e1) + Integer.parseInt(e2) );
+		 }else{
+			RESULT = "( +" + " " + e1 + " " + e2 + ")";
+		 }
+		:}
+	| 
+		MINUS EXPRESSION:e1 EXPRESSION:e2 
+		{:
+		 if( checkIfNum(e1, e2) ){
+			RESULT = String.valueOf( (Integer) Integer.parseInt(e1) - Integer.parseInt(e2) );
+		 }else{
+			RESULT = "( -" + " " + e1 + " " + e2 + ")";
+		 }
+		:}
+	| 
+		MULTIPLY EXPRESSION:e1 EXPRESSION:e2 
+		{:
+		 if( checkIfNum(e1, e2) ){
+			RESULT = String.valueOf( (Integer) Integer.parseInt(e1) * Integer.parseInt(e2) );
+		 }else{
+			RESULT = "( *" + " " + e1 + " " + e2 + ")";
+		 }
+		:}
+	| 
+		DIVIDE EXPRESSION:e1 EXPRESSION:e2 
+		{:
+		 if( checkIfNum(e1, e2) ){
+			RESULT = String.valueOf( (Integer) Integer.parseInt(e1) / Integer.parseInt(e2) );
+		 }else{
+			RESULT = "( /" + " " + e1 + " " + e2 + ")";
+		 }
+		:}
+	;
+	
+APPLICATION ::=
+		LEFT LAMBDA VARIABLE:var DOT EXPRESSION_LIST:e1  RIGHT EXPRESSION_LIST:e2
+		{:
+			if(checkIfNum(e1) || (e2 == null)){
+			    if( !checkIfNum(e1) ){ //if function isn't a number and e2 is null
+			        Pattern par = Pattern.compile("[a-zA-Z]");
+                    Matcher m = par.matcher(e1);
+                    println("isn't a number but e2 is null");
+                    if( m.find() ){
+                        e1 = "(&"+var+"."+e1+")";
+                        println("print new e1 "+e1);
+                    }
+			    }
+				RESULT = e1;
+			}else{
+				println("print e2 "+e2);
+				println("print e1 before e2 "+e1+" and var is "+var);
+				e1 = e1.replace(var, e2);
+				println("print e1 after e2 "+e1);
+				Pattern par = Pattern.compile("[a-zA-Z]");
+				Matcher m = par.matcher(e1);
+				if( !m.find() && !checkIfNum(e1) ){
+					String s = insertString(e1, "&t.", 0);
+					String ss = insertString(s, "t", s.length()-1);
+					println("print ss "+ss);
+					//createFile(ss);
+					parser p = new parser(ss);
+					String temp = e1;
+					try{
+						p.parse();
+						temp = p.finalResult;
+						betaReductionCount += p.getBetaReductionCount();
+					}catch (Exception e){
+						e.printStackTrace();
+						RESULT = e1;
+					}
+					println("print after parsing "+temp);
+					RESULT = temp;
+				}else{
+				    e1 = "(&"+var+"."+e1+")";
+				    println("print new e1 "+e1);
+
+					RESULT = e1;
+				}
+			}
+			
+			if(e2 != null){
+				betaReductionCount++;
+			}
+			
+			
+		:}
+	;
+	
+/*FULL_EXPRESSION ::=
+	 LEFT LAMBDA VARIABLE DOT EXPRESSION:e1 RIGHT
+	{:
+	RESULT = e1;println("full ex "+e1);
+	:}
+;*/
